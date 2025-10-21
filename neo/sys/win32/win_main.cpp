@@ -1254,6 +1254,11 @@ int SDL_main(int argc, char *argv[]) {
 		return 0;
 	}
 
+	// Launch the tools launcher
+	if ( strstr( GetCommandLine(), "-toolslauncher" ) ) {
+		com_editors |= EDITOR_TOOLSLAUNCHER;
+	}
+
 	// ::SetFocus( win32.hWnd ); // DG: let SDL handle focus, otherwise input is fucked up! (#100)
 
 	// main game loop
@@ -1315,6 +1320,9 @@ int SDL_main(int argc, char *argv[]) {
 					PDAEditorRun();
 				}
 			}
+		}
+		if ( com_editors & EDITOR_TOOLSLAUNCHER ) {
+			ToolsLauncherRun();
 		}
 #endif
 		// run the game

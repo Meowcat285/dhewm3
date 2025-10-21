@@ -1105,6 +1105,9 @@ if (TOOLS AND MFC_FOUND AND MSVC)
 		"tools/edit_public.h"
 		"tools/edit_gui_common.h"
 		)
+	if (TOOLS AND MFC_FOUND AND MSVC)
+		list(APPEND src_editor_tools "tools/tools_launcher.cpp")
+	endif()
 	SET(CMAKE_MFC_FLAG 2)
 	set(TOOLS_DEFINES "ID_ALLOW_TOOLS;_AFXDLL")
 else()

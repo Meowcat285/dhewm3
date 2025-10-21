@@ -117,4 +117,7 @@ void	MaterialEditorRun( void );
 void	MaterialEditorShutdown( void );
 void	MaterialEditorPrintConsole( const char *msg );
 
+// Tools Launcher
+void ToolsLauncherRun( void );
+
 #endif /* !__EDIT_PUBLIC_H__ */
