@@ -50,6 +50,8 @@ If you have questions concerning this license or the applicable additional terms
 #include "framework/Licensee.h" // DG: for ID__DATE__
 
 #include "Game_local.h"
+#include "generated/player_position.pb.h"
+#include "sys/sys_local.h"
 
 #ifndef GAME_DLL
 #include "tools/compilers/aas/AASFileManager.h"
@@ -364,6 +366,10 @@ void idGameLocal::Init( void ) {
 	common->GetAdditionalFunction(idCommon::FT_IsDemo, (idCommon::FunctionPointer*)&isDemoFnPtr, NULL);
 	//debugger support
 	common->GetAdditionalFunction(idCommon::FT_UpdateDebugger,(idCommon::FunctionPointer*) &updateDebuggerFnPtr,NULL);
+
+	if ( udpPort != -1 ) {
+		udpNet.Init( udpPort );
+	}
 }
 
 /*
@@ -378,6 +384,8 @@ void idGameLocal::Shutdown( void ) {
 	if ( !common ) {
 		return;
 	}
+
+	udpNet.Shutdown();
 
 	Printf( "----- Game Shutdown -----\n" );
 
@@ -2258,6 +2266,15 @@ gameReturn_t idGameLocal::RunFrame( const usercmd_t *clientCmds ) {
 
 		if ( player ) {
 			player->Think();
+			if ( udpPort != -1 && udpDest.type != NA_BAD ) {
+				PlayerPosition pos;
+				pos.set_x( player->GetPhysics()->GetOrigin().x );
+				pos.set_y( player->GetPhysics()->GetOrigin().y );
+				pos.set_z( player->GetPhysics()->GetOrigin().z );
+				std::string serialized_pos;
+				pos.SerializeToString( &serialized_pos );
+				udpNet.Send( udpDest, serialized_pos );
+			}
 		}
 	} else do {
 		// update the game time

@@ -66,4 +66,7 @@ public:
 	virtual void			StartProcess( const char *exeName, bool quit );
 };
 
+extern int udpPort;
+extern netadr_t udpDest;
+
 #endif /* !__SYS_LOCAL__ */

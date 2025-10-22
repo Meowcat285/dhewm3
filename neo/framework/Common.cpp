@@ -2940,7 +2940,15 @@ static bool checkForHelp(int argc, char **argv)
 idCommonLocal::Init
 =================
 */
+#include "sys/sys_local.h"
 void idCommonLocal::Init( int argc, char **argv ) {
+	for (int i = 0; i < argc; ++i) {
+		if (strcmp(argv[i], "--udp-port") == 0 && i + 1 < argc) {
+			udpPort = atoi(argv[++i]);
+		} else if (strcmp(argv[i], "--udp-dest") == 0 && i + 1 < argc) {
+			Sys_StringToNetAdr(argv[++i], &udpDest, true);
+		}
+	}
 
 	// in case UINTPTR_MAX isn't defined (or wrong), do a runtime check at startup
 	if ( D3_SIZEOFPTR != sizeof(void*) ) {

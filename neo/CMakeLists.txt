@@ -46,6 +46,21 @@ set(DHEWM3BINARY "dhewm3")
 
 include(CheckCXXCompilerFlag)
 include(GNUInstallDirs OPTIONAL RESULT_VARIABLE GNUINSTALLDIRS)
+
+# Add CPM.cmake and Protobuf
+include(sys/cmake/get_cpm.cmake)
+CPMAddPackage(
+    NAME protobuf
+    GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
+    GIT_TAG v21.12
+    OPTIONS "protobuf_BUILD_TESTS OFF" "protobuf_BUILD_EXAMPLES OFF" "CMAKE_POSITION_INDEPENDENT_CODE ON"
+)
+
+# Configure protobuf code generation
+set(Protobuf_DIR ${protobuf_BINARY_DIR})
+find_package(Protobuf CONFIG REQUIRED)
+set(PROTO_FILES ${CMAKE_CURRENT_SOURCE_DIR}/proto/player_position.proto)
+
 include(TestBigEndian)
 
 option(CORE			"Build the core" ON)
@@ -645,6 +660,7 @@ set(src_framework
 	framework/async/MsgChannel.cpp
 	framework/async/NetworkSystem.cpp
 	framework/async/ServerScan.cpp
+	framework/UDPNet.cpp
 	framework/miniz/miniz.c
 	framework/minizip/ioapi.c
 	framework/minizip/unzip.cpp
@@ -1258,12 +1274,27 @@ if(HARDLINK_GAME)
 endif()# HARDLINK_GAME
 
 if(CORE)
+	set(PROTO_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
+	set(PROTO_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+	file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
+	set(PROTO_FILES ${PROTO_SRC_DIR}/player_position.proto)
+	set(PROTO_SRCS ${PROTO_GEN_DIR}/player_position.pb.cc)
+	set(PROTO_HDRS ${PROTO_GEN_DIR}/player_position.pb.h)
+
+	add_custom_command(
+		OUTPUT ${PROTO_SRCS} ${PROTO_HDRS}
+		COMMAND $<TARGET_FILE:protobuf::protoc>
+		ARGS --cpp_out=${PROTO_GEN_DIR} --proto_path=${PROTO_SRC_DIR} ${PROTO_FILES}
+		DEPENDS ${PROTO_FILES}
+	)
+
 	add_executable(${DHEWM3BINARY} WIN32 MACOSX_BUNDLE
 		${src_core}
 		${src_sys_base}
 		${src_sys_core}
 		${src_imgui}
 		${src_editor_tools}
+		${PROTO_SRCS}
 	)
 	
 	if(MSVC AND CMAKE_MAJOR_VERSION GREATER 3 OR ( CMAKE_MAJOR_VERSION EQUAL 3 AND CMAKE_MINOR_VERSION GREATER_EQUAL 6 ))
@@ -1273,7 +1304,7 @@ if(CORE)
 
 	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX neo FILES ${src_core} ${src_sys_base} ${src_sys_core} ${src_imgui} ${src_editor_tools})
 
-	target_include_directories(${DHEWM3BINARY} PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui")
+	target_include_directories(${DHEWM3BINARY} PRIVATE "${CMAKE_SOURCE_DIR}/libs/imgui" ${PROTO_GEN_DIR})
 
 if(HARDLINK_GAME)
 	set_target_properties(${DHEWM3BINARY} PROPERTIES COMPILE_DEFINITIONS "${TOOLS_DEFINES}")
@@ -1284,12 +1315,14 @@ endif()
 	set_target_properties(${DHEWM3BINARY} PROPERTIES LINK_FLAGS "${ldflags}")
 	set_target_properties(${DHEWM3BINARY} PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${PROJECT_SOURCE_DIR}/sys/osx/Info.plist)
 
+	target_include_directories(${DHEWM3BINARY} PRIVATE ${protobuf_INCLUDE_DIRS})
 	target_link_libraries(${DHEWM3BINARY}
 		idlib
 		${OPENAL_LIBRARY}
 		${CURL_LIBRARY}
 		${SDLx_LIBRARY}
 		${sys_libs}
+		protobuf::libprotobuf
 	)
 
 	if(NOT APPLE AND NOT WIN32)
@@ -1337,23 +1370,23 @@ endif()
 
 if(BASE AND NOT HARDLINK_GAME)
 	if (AROS)
-		add_executable(base sys/aros/dll/dllglue.c ${src_game})
+		add_executable(base sys/aros/dll/dllglue.c ${src_game} ${PROTO_SRCS})
 		set_target_properties(base PROPERTIES OUTPUT_NAME "base.aros-${AROS_ARCH}")
 	else()
-		add_library(base SHARED ${src_game})
+		add_library(base SHARED ${src_game} ${PROTO_SRCS})
 	endif()
 	
 	source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} PREFIX neo FILES ${src_game})
 	
 	set_target_properties(base PROPERTIES PREFIX "")
 	set_target_properties(base PROPERTIES COMPILE_DEFINITIONS "GAME_DLL")
-	target_include_directories(base PRIVATE "${CMAKE_SOURCE_DIR}/game")
+	target_include_directories(base PRIVATE "${CMAKE_SOURCE_DIR}/game" ${PROTO_GEN_DIR} ${protobuf_INCLUDE_DIRS})
 	set_target_properties(base PROPERTIES LINK_FLAGS "${ldflags}")
 	set_target_properties(base PROPERTIES INSTALL_NAME_DIR "@executable_path")
 	if (AROS)
-		target_link_libraries(base idlib dll)
+		target_link_libraries(base idlib dll protobuf::libprotobuf)
 	else()
-		target_link_libraries(base idlib)
+		target_link_libraries(base idlib protobuf::libprotobuf)
 	endif()
 
 	if(NOT APPLE AND NOT WIN32)

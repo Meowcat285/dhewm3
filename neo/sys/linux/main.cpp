@@ -407,6 +407,8 @@ void idSysLocal::OpenURL( const char *url, bool quit ) {
 main
 ===============
 */
+#include "sys/sys_local.h"
+
 int main(int argc, char **argv) {
 	// Prevent running Doom 3 as root
 	// Borrowed from Yamagi Quake II

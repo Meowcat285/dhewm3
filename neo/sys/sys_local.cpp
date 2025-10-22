@@ -38,8 +38,13 @@ const char * sysLanguageNames[] = {
 
 idCVar sys_lang( "sys_lang", "english", CVAR_SYSTEM | CVAR_ARCHIVE,  "", sysLanguageNames, idCmdSystem::ArgCompletion_String<sysLanguageNames> );
 
+#include "framework/async/NetworkSystem.h"
+
 idSysLocal			sysLocal;
 idSys *				sys = &sysLocal;
+
+int					udpPort = -1;
+netadr_t			udpDest;
 
 void idSysLocal::DebugPrintf( const char *fmt, ... ) {
 	va_list argptr;

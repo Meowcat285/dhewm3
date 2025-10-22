@@ -44,6 +44,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "anim/Anim.h"
 #include "Pvs.h"
 #include "MultiplayerGame.h"
+#include "framework/UDPNet.h"
 
 #ifdef ID_DEBUG_UNINITIALIZED_MEMORY
 // This is real evil but allows the code to inspect arbitrary class variables.
@@ -259,6 +260,7 @@ public:
 
 	idMultiplayerGame		mpGame;					// handles rules for standard dm
 
+	UDPNet					udpNet;					// for sending data to Unreal
 	idSmokeParticles *		smokeParticles;			// global smoke trails
 	idEditEntities *		editEntities;			// in game editing
 
