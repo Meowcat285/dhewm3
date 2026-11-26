@@ -1,14 +1,9 @@
 name: Testbuild for MacOS
 run-name: testbuild_macos
+# macOS builds are paused while the renderer is being ported to The Forge
+# (Windows + Linux first). Run manually from the Actions tab if needed.
 on:
-  push:
-    branches:
-      - 'master'
-  pull_request:
-    types:
-      - edited
-      - opened
-      - synchronize
+  workflow_dispatch:
 concurrency:
   # Cancel concurrent workflows for the same PR or commit hash.
   group: ${{github.workflow}}-${{github.event_name == 'pull_request' && github.head_ref || github.sha}}
