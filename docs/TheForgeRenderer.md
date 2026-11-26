@@ -53,6 +53,9 @@ ships its own Vulkan headers. Running needs a GPU driver with Vulkan support.
   Disables the parts of The Forge dhewm3 doesn't use (Lua, UI, fonts, profiler, ...).
 * `neo/renderer/forge/ForgeBackend.{h,cpp}`: creates the Forge renderer and swapchain for
   the SDL window and renders/presents frames. The only dhewm3 file that includes The Forge headers.
+* `neo/renderer/forge/ForgeOSLog.c`: replaces The Forge's `OS/<platform>/<platform>Log.c`
+  (compiled into the TheForge library), so The Forge's log lines reach stdout/`dhewm3log.txt`
+  only through the dhewm3 console, instead of twice.
 * `neo/renderer/forge/NullGL.cpp`: the do-nothing OpenGL implementation the old renderer
   talks to until it's ported.
 * `neo/sys/glimp.cpp`: window creation, now calls into `ForgeBackend` when built with `FORGE_RENDERER`.
