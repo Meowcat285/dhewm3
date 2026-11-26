@@ -60,25 +60,64 @@ jobs:
           install_runtime: false
           cache: true
 
+      - name: Look up dhewm3-libs revision
+        id: d3libs
+        run: |
+          echo "sha=$(git ls-remote https://github.com/dhewm/dhewm3-libs refs/heads/master | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "D3LIBS_ROOT=$(cygpath -m "$RUNNER_TEMP")/dhewm3-libs-master" >> "$GITHUB_ENV"
+          echo "D3LIBS=$(cygpath -m "$RUNNER_TEMP")/dhewm3-libs-master/x86_64-w64-mingw32" >> "$GITHUB_ENV"
+
+      - name: Restore dhewm3-libs from cache
+        id: d3libs-cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.D3LIBS_ROOT }}
+          key: dhewm3-libs-win64-${{ steps.d3libs.outputs.sha }}
+
       - name: Download dhewm3-libs (SDL2, OpenAL, cURL, ...)
+        if: steps.d3libs-cache.outputs.cache-hit != 'true'
         run: |
           tmp=$(cygpath -u "$RUNNER_TEMP")
-          curl -fsSL -o "$tmp/dhewm3libs.zip" https://codeload.github.com/dhewm/dhewm3-libs/zip/refs/heads/master
-          unzip -q "$tmp/dhewm3libs.zip" "dhewm3-libs-master/x86_64-w64-mingw32/**" \
-            -x "dhewm3-libs-master/x86_64-w64-mingw32/share/**" -d "$tmp"
-          echo "D3LIBS=$(cygpath -m "$tmp/dhewm3-libs-master/x86_64-w64-mingw32")" >> "$GITHUB_ENV"
+          curl -fsSL -o "$tmp/dhewm3libs.zip" https://codeload.github.com/dhewm/dhewm3-libs/zip/${{ steps.d3libs.outputs.sha }}
+          unzip -q "$tmp/dhewm3libs.zip" "dhewm3-libs-*/x86_64-w64-mingw32/**" \
+            -x "dhewm3-libs-*/x86_64-w64-mingw32/share/**" -d "$tmp/d3libs-unpack"
+          mv "$tmp"/d3libs-unpack/dhewm3-libs-* "$tmp/dhewm3-libs-master"
+
+      # Compiler cache: sccache in front of MSVC (needs the Ninja generator; the Visual
+      # Studio generator ignores compiler launchers). Saved per run, restored from the
+      # newest cache of this branch, falling back to master's.
+      - name: Set up sccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          variant: sccache
+          key: windows-x64
+          max-size: 1G
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Configure
-        run: cmake -S neo -B build -A x64 -DDHEWM3LIBS="$D3LIBS" $CMAKE_COMMON_ARGS
+        run: |
+          cmake -S neo -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DDHEWM3LIBS="$D3LIBS" $CMAKE_COMMON_ARGS
 
       - name: Build
-        run: cmake --build build --config "$BUILD_TYPE" --parallel
+        run: cmake --build build --parallel
+
+      - name: Compiler cache stats
+        if: always()
+        run: sccache --show-stats || true
 
       - name: Package
         run: |
           out="publish/$PKGDIR"
           mkdir -p "$out/base" "$out/d3xp" "pdb/$PKGDIR"
-          bin="build/$BUILD_TYPE"
+          bin="build"   # Ninja is single-config: binaries land directly in build/
           cp "$bin"/*.exe "$bin"/*.dll "$out/"
           cp "$bin"/*.pdb "pdb/$PKGDIR/" 2>/dev/null || true
           # Anything extra the build produces next to the exe (e.g. compiled shaders)
@@ -155,6 +194,10 @@ jobs:
 
       - name: Build
         run: cmake --build build --parallel
+
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats || true
 
       - name: Package
         run: |
