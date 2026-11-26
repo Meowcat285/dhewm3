@@ -43,6 +43,33 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#ifdef D3_FORGE_RENDERER
+  #if ! SDL_VERSION_ATLEAST(2, 0, 0)
+    #error "The Forge renderer (FORGE_RENDERER) needs SDL2 or SDL3"
+  #endif
+  #include "renderer/forge/ForgeBackend.h"
+  #include "renderer/forge/NullGL.h"
+
+// used by ForgeBackend.cpp, which can't include dhewm3 headers
+void ForgeBackend_Printf( const char* fmt, ... ) {
+	char buf[4096];
+	va_list argptr;
+	va_start( argptr, fmt );
+	idStr::vsnPrintf( buf, sizeof( buf ), fmt, argptr );
+	va_end( argptr );
+	common->Printf( "%s", buf );
+}
+
+void ForgeBackend_Warning( const char* fmt, ... ) {
+	char buf[4096];
+	va_list argptr;
+	va_start( argptr, fmt );
+	idStr::vsnPrintf( buf, sizeof( buf ), fmt, argptr );
+	va_end( argptr );
+	common->Warning( "%s", buf );
+}
+#endif // D3_FORGE_RENDERER
+
 #include "sys/sys_imgui.h"
 
 #if defined(_WIN32) && defined(ID_ALLOW_TOOLS)
@@ -122,6 +149,8 @@ static SDL_Surface *window = NULL;
 #define SDL_WINDOW_FULLSCREEN SDL_FULLSCREEN
 #endif
 
+static int cur_swapInterval = 0;
+
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 
 extern idCVar in_grabKeyboard;
@@ -180,11 +209,22 @@ GLimp_Init
 ===================
 */
 bool GLimp_Init(glimpParms_t parms) {
+#ifdef D3_FORGE_RENDERER
+	common->Printf("Initializing window for The Forge renderer (Vulkan)\n");
+#else
 	common->Printf("Initializing OpenGL subsystem\n");
+#endif
 
 	assert(SDL_WasInit(SDL_INIT_VIDEO));
 
+#ifdef D3_FORGE_RENDERER
+	// no OpenGL context: The Forge creates a Vulkan surface for the native window
+	My_SDL_WindowFlags flags = 0;
+	// MSAA isn't implemented for The Forge yet
+	parms.multiSamples = 0;
+#else
 	My_SDL_WindowFlags flags = SDL_WINDOW_OPENGL;
+#endif
 
 	if (parms.fullScreen == 1)
 	{
@@ -573,6 +613,25 @@ try_again:
 		}
 	#endif // SDL2
 
+#ifdef D3_FORGE_RENDERER
+		// for HighDPI, window size and drawable size can differ
+		GLimp_UpdateWindowSize();
+
+		cur_swapInterval = r_swapInterval.GetInteger();
+		r_swapInterval.ClearModified();
+
+		// directory for The Forge's config files, logs and caches
+		idStr forgeDataDir = cvarSystem->GetCVarString( "fs_savepath" );
+		forgeDataDir.AppendPath( "forge" );
+		Sys_Mkdir( forgeDataDir.c_str() );
+
+		if ( !ForgeBackend_Init( window, glConfig.vidWidth, glConfig.vidHeight, cur_swapInterval != 0, forgeDataDir.c_str() ) ) {
+			common->Warning( "Couldn't initialize The Forge renderer (Vulkan)\n" );
+			SDL_DestroyWindow( window );
+			window = NULL;
+			return false; // trying other color depth etc won't help with this
+		}
+#else
 		context = SDL_GL_CreateContext(window);
 
 		GLimp_SetSwapInterval( r_swapInterval.GetInteger() );
@@ -580,6 +639,7 @@ try_again:
 
 		// for HighDPI, window size and drawable size can differ
 		GLimp_UpdateWindowSize();
+#endif
 
 		SetSDLIcon(); // for SDL2  this must be done after creating the window
 
@@ -742,6 +802,16 @@ try_again:
 		common->Printf("Requested %d color bits per chan, %d alpha %d depth, %d stencil and %s\n",
 						channelcolorbits, talphabits, tdepthbits, tstencilbits, msaaStr.c_str());
 
+#ifdef D3_FORGE_RENDERER
+		{
+			// no GL framebuffer, the renderer will create its own render targets
+			glConfig.colorBits = 24;
+			glConfig.alphabits = 8;
+			glConfig.depthBits = 24;
+			glConfig.stencilBits = 8;
+			r_multiSamples.SetInteger(0);
+		}
+#else
 		{
 			int r, g, b, a, d, s, msaa;
 			SDL_GL_GetAttribute(SDL_GL_RED_SIZE, &r);
@@ -768,6 +838,7 @@ try_again:
 			glConfig.stencilBits = s;
 			r_multiSamples.SetInteger(msaa);
 		}
+#endif // D3_FORGE_RENDERER
 
 		glConfig.displayFrequency = 0;
 
@@ -1112,6 +1183,10 @@ void GLimp_Shutdown() {
 
 	common->Printf("Shutting down OpenGL subsystem\n");
 
+#ifdef D3_FORGE_RENDERER
+	ForgeBackend_Shutdown();
+#endif
+
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 	if (context) {
 		SDL_GL_DeleteContext(context);
@@ -1132,7 +1207,9 @@ GLimp_SwapBuffers
 */
 void GLimp_SwapBuffers() {
 	D3P_BeginCPUSample(SDL_GL_SwapWindow);
-#if SDL_VERSION_ATLEAST(2, 0, 0)
+#if defined(D3_FORGE_RENDERER)
+	ForgeBackend_EndFrame( glConfig.vidWidth, glConfig.vidHeight );
+#elif SDL_VERSION_ATLEAST(2, 0, 0)
 	SDL_GL_SwapWindow(window);
 #else
 	SDL_GL_SwapBuffers();
@@ -1242,7 +1319,12 @@ GLimp_ExtensionPointer
 GLExtension_t GLimp_ExtensionPointer(const char *name) {
 	assert(SDL_WasInit(SDL_INIT_VIDEO));
 
+#ifdef D3_FORGE_RENDERER
+	// there is no GL context, see renderer/forge/NullGL.cpp
+	return NullGL_GetProcAddress(name);
+#else
 	return (GLExtension_t)SDL_GL_GetProcAddress(name);
+#endif
 }
 
 void GLimp_GrabInput(int flags) {
@@ -1286,10 +1368,13 @@ void GLimp_GrabInput(int flags) {
 #endif
 }
 
-static int cur_swapInterval = 0;
 bool GLimp_SetSwapInterval( int swapInterval )
 {
-#if SDL_VERSION_ATLEAST(2, 0, 0)
+#if defined(D3_FORGE_RENDERER)
+	ForgeBackend_SetVSync( swapInterval != 0 );
+	cur_swapInterval = swapInterval;
+	return true;
+#elif SDL_VERSION_ATLEAST(2, 0, 0)
   #if SDL_VERSION_ATLEAST(3, 0, 0)
 	if ( ! SDL_GL_SetSwapInterval( swapInterval ) ) {
   #elif SDL_VERSION_ATLEAST(2, 0, 0)

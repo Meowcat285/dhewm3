@@ -1,0 +1,4 @@
+[submodule "neo/libs/TheForge"]
+	path = neo/libs/TheForge
+	url = https://github.com/Meowcat285/The-Forge.git
+	shallow = true

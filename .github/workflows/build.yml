@@ -128,7 +128,7 @@ jobs:
             cmake ninja-build ccache \
             libgl1-mesa-dev libsdl2-dev libopenal-dev libcurl4-openssl-dev \
             libvulkan-dev glslang-tools spirv-tools \
-            libx11-dev libxrandr-dev libxi-dev libudev-dev libgtk-3-dev
+            libx11-dev libwayland-dev libxrandr-dev libxi-dev libudev-dev libgtk-3-dev
 
       - name: Check out repository (with submodules)
         uses: actions/checkout@v6
