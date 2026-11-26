@@ -545,9 +545,12 @@ elseif(MSVC)
 	add_compile_options(/wd4068) # unknown pragma
 	add_compile_options(/wd4458) # declaration of 'variable' hides class member
 	add_definitions(-D_ALLOW_KEYWORD_MACROS) # because of the "#define private public" and "#define protected public" in TypeInfo.cpp
-	set(CMAKE_C_FLAGS_DEBUG "-D_DEBUG /Od /Zi /MDd")
+	# /Z7 (debug info inside each .obj) instead of /Zi (shared compile-time .pdb), so
+	# compiler caches like sccache/ccache can cache MSVC output. The linker still writes
+	# the usual .pdb next to each binary.
+	set(CMAKE_C_FLAGS_DEBUG "-D_DEBUG /Od /Z7 /MDd")
 	set(CMAKE_C_FLAGS_RELEASE "/Ox /Oy /MD")
-	set(CMAKE_C_FLAGS_RELWITHDEBINFO "/Ox /Oy /Zi /MD")
+	set(CMAKE_C_FLAGS_RELWITHDEBINFO "/Ox /Oy /Z7 /MD")
 	set(CMAKE_C_FLAGS_MINSIZEREL "/Ox /Oy /Os /MD")
 	# use 8MB stack instead of 1MB, so big models don't overflow it with _alloca()
 	set(ldflags "${ldflags} /STACK:8388608")
