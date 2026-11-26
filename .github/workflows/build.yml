@@ -1,0 +1,241 @@
+# Builds dhewm3 for Windows (x64) and Linux (x86_64).
+#
+# Every run uploads ready-to-test packages as workflow artifacts (open the run in the
+# Actions tab and scroll to "Artifacts"). Pushes to master (or a manual run on master)
+# also refresh the rolling "nightly" pre-release, whose download links never change:
+#   https://github.com/<owner>/<repo>/releases/tag/nightly
+#
+# To add CMake options for every platform (e.g. renderer switches), edit CMAKE_COMMON_ARGS.
+name: Build
+run-name: ${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.title) || github.ref_name }}
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # One run per PR/branch. PR runs cancel older ones; master runs queue so the
+  # nightly release is never left half-published.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  BUILD_TYPE: RelWithDebInfo
+  CMAKE_COMMON_ARGS: ""
+  # The Forge loads Vulkan at runtime via volk with bundled headers, so the SDK isn't
+  # needed to build yet. Set to "true" once FSL shaders are compiled at build time
+  # (provides glslangValidator / dxc on Windows).
+  INSTALL_VULKAN_SDK: "false"
+  VULKAN_SDK_VERSION: "1.4.313.0"
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository (with submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set package name
+        run: |
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "PKGDIR=dhewm3-windows-x64" >> "$GITHUB_ENV"
+
+      - name: Install Vulkan SDK
+        if: env.INSTALL_VULKAN_SDK == 'true'
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          vulkan_version: ${{ env.VULKAN_SDK_VERSION }}
+          install_runtime: false
+          cache: true
+
+      - name: Download dhewm3-libs (SDL2, OpenAL, cURL, ...)
+        run: |
+          tmp=$(cygpath -u "$RUNNER_TEMP")
+          curl -fsSL -o "$tmp/dhewm3libs.zip" https://codeload.github.com/dhewm/dhewm3-libs/zip/refs/heads/master
+          unzip -q "$tmp/dhewm3libs.zip" "dhewm3-libs-master/x86_64-w64-mingw32/**" \
+            -x "dhewm3-libs-master/x86_64-w64-mingw32/share/**" -d "$tmp"
+          echo "D3LIBS=$(cygpath -m "$tmp/dhewm3-libs-master/x86_64-w64-mingw32")" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake -S neo -B build -A x64 -DDHEWM3LIBS="$D3LIBS" $CMAKE_COMMON_ARGS
+
+      - name: Build
+        run: cmake --build build --config "$BUILD_TYPE" --parallel
+
+      - name: Package
+        run: |
+          out="publish/$PKGDIR"
+          mkdir -p "$out/base" "$out/d3xp" "pdb/$PKGDIR"
+          bin="build/$BUILD_TYPE"
+          cp "$bin"/*.exe "$bin"/*.dll "$out/"
+          cp "$bin"/*.pdb "pdb/$PKGDIR/" 2>/dev/null || true
+          # Anything extra the build produces next to the exe (e.g. compiled shaders)
+          for d in Shaders shaders CompiledShaders Resources; do
+            [ -d "$bin/$d" ] && cp -r "$bin/$d" "$out/"
+          done
+          cp "$D3LIBS"/bin/{OpenAL32.dll,SDL2.dll,libcurl-4.dll} "$out/"
+          cp base/gamepad.cfg "$out/base/"
+          cp base/gamepad-d3xp.cfg "$out/d3xp/"
+          cp COPYING.txt "$out/"
+          cp Changelog.md "$out/Changelog.txt"
+          cp Configuration.md "$out/Configuration.txt"
+          {
+            echo "dhewm3 (The Forge renderer port) for 64-bit Windows"
+            echo "Built $(date -u '+%Y-%m-%d %H:%M UTC') from ${GITHUB_REF_NAME} @ ${GITHUB_SHA}"
+            echo
+            echo "Copy your Doom 3 base/ (and d3xp/) game data into this folder, then run dhewm3.exe."
+            echo "Needs a GPU driver with Vulkan support."
+            echo
+            cat README.md
+          } > "$out/README.txt"
+          ls -la "$out"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: dhewm3-windows-x64-${{ env.SHORT_SHA }}
+          path: publish/
+          if-no-files-found: error
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: dhewm3-windows-x64-${{ env.SHORT_SHA }}-pdb
+          path: pdb/
+          if-no-files-found: warn
+
+  linux:
+    name: Linux x86_64
+    # Oldest supported runner, so the binaries work on older glibc too.
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build ccache \
+            libgl1-mesa-dev libsdl2-dev libopenal-dev libcurl4-openssl-dev \
+            libvulkan-dev glslang-tools spirv-tools \
+            libx11-dev libxrandr-dev libxi-dev libudev-dev libgtk-3-dev
+
+      - name: Check out repository (with submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Set package name
+        run: |
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "PKGDIR=dhewm3-linux-x86_64" >> "$GITHUB_ENV"
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: linux-x86_64
+          max-size: 500M
+
+      - name: Configure
+        run: |
+          cmake -S neo -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            $CMAKE_COMMON_ARGS
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Package
+        run: |
+          out="publish/$PKGDIR"
+          mkdir -p "$out/base" "$out/d3xp"
+          cp build/dhewm3 build/*.so "$out/"
+          for d in Shaders shaders CompiledShaders Resources; do
+            [ -d "build/$d" ] && cp -r "build/$d" "$out/"
+          done
+          cp base/gamepad.cfg "$out/base/"
+          cp base/gamepad-d3xp.cfg "$out/d3xp/"
+          cp COPYING.txt "$out/"
+          cp Changelog.md "$out/Changelog.txt"
+          cp Configuration.md "$out/Configuration.txt"
+          {
+            echo "dhewm3 (The Forge renderer port) for x86_64 Linux"
+            echo "Built $(date -u '+%Y-%m-%d %H:%M UTC') from ${GITHUB_REF_NAME} @ ${GITHUB_SHA}"
+            echo
+            echo "Copy your Doom 3 base/ (and d3xp/) game data into this folder, then run ./dhewm3"
+            echo "Needs SDL2, OpenAL and a Vulkan driver installed from your distro."
+            echo
+            cat README.md
+          } > "$out/README.txt"
+          # tar keeps the executable bit (zip artifacts don't)
+          tar -C publish -czf "$PKGDIR.tar.gz" "$PKGDIR"
+          ls -la "$out"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: dhewm3-linux-x86_64-${{ env.SHORT_SHA }}
+          path: ${{ env.PKGDIR }}.tar.gz
+          if-no-files-found: error
+
+  nightly:
+    name: Publish nightly release
+    needs: [windows, linux]
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir release
+          cd artifacts
+          for d in dhewm3-windows-x64-*; do
+            case "$d" in
+              *-pdb) (cd "$d" && zip -qr ../../release/dhewm3-windows-x64-pdb.zip .) ;;
+              *)     (cd "$d" && zip -qr ../../release/dhewm3-windows-x64.zip .) ;;
+            esac
+          done
+          cp dhewm3-linux-x86_64-*/dhewm3-linux-x86_64.tar.gz ../release/
+          ls -la ../release
+
+      - name: Replace nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          short=$(echo "$GITHUB_SHA" | cut -c1-7)
+          cat > notes.md <<EOF
+          Rolling development build of the dhewm3 → The Forge renderer port, rebuilt on every push to \`master\`.
+
+          **Commit:** [\`$short\`](https://github.com/$GH_REPO/commit/$GITHUB_SHA) · built $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          | Platform | Download |
+          |---|---|
+          | Windows x64 | [dhewm3-windows-x64.zip](https://github.com/$GH_REPO/releases/download/nightly/dhewm3-windows-x64.zip) |
+          | Linux x86_64 | [dhewm3-linux-x86_64.tar.gz](https://github.com/$GH_REPO/releases/download/nightly/dhewm3-linux-x86_64.tar.gz) |
+          | Windows debug symbols | [dhewm3-windows-x64-pdb.zip](https://github.com/$GH_REPO/releases/download/nightly/dhewm3-windows-x64-pdb.zip) |
+
+          Copy your Doom 3 \`base/\` (and \`d3xp/\`) game data next to the executable. Needs a Vulkan-capable GPU driver.
+          EOF
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly release/* \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Nightly build ($short)" --notes-file notes.md
+          echo "Published https://github.com/$GH_REPO/releases/tag/nightly" >> "$GITHUB_STEP_SUMMARY"

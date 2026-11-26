@@ -1,3 +1,10 @@
+# Test builds (The Forge renderer port)
+
+This fork is porting dhewm3's renderer to [The Forge](https://github.com/Meowcat285/The-Forge).
+Latest Windows and Linux builds of `master`: **[nightly release](https://github.com/Meowcat285/dhewm3/releases/tag/nightly)**.
+Builds for every pull request are attached as artifacts to its run in the
+[Actions tab](https://github.com/Meowcat285/dhewm3/actions/workflows/build.yml).
+
 #  !!! ATTENTION: DO NOT PLAY DOOM3 ONLINE !!!
 
 It turned out that the **multiplayer** code in Doom3 and all sourceports (incl. dhewm3) is **fundamentally insecure**.
