@@ -172,7 +172,8 @@ void WriteGpuCfg( const char* dataDir ) {
 	fclose( f );
 }
 
-// forward The Forge warnings and errors to the dhewm3 console
+// The Forge log lines go to the dhewm3 console (and so dhewm3log.txt) only through
+// this callback, see ForgeOSLog.c
 void ForgeLogCallback( void* /*userData*/, const char* message ) {
 	ForgeBackend_Printf( "%s", message );
 }

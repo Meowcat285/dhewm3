@@ -66,7 +66,6 @@ set(tf_src_os
 if(WIN32)
 	set(tf_src_os ${tf_src_os}
 		${TF_COMMON}/OS/Windows/WindowsFileSystem.cpp
-		${TF_COMMON}/OS/Windows/WindowsLog.c
 		${TF_COMMON}/OS/Windows/WindowsThread.c
 		${TF_COMMON}/OS/Windows/WindowsTime.c
 		${TF_COMMON}/OS/ThirdParty/OpenSource/cpu_features/src/impl_x86_windows.c
@@ -75,7 +74,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	set(tf_src_os ${tf_src_os}
 		${TF_COMMON}/Utilities/FileSystem/UnixFileSystem.c
 		${TF_COMMON}/OS/Linux/LinuxFileSystem.c
-		${TF_COMMON}/OS/Linux/LinuxLog.c
 		${TF_COMMON}/OS/Linux/LinuxThread.c
 		${TF_COMMON}/OS/Linux/LinuxTime.c
 		${TF_COMMON}/OS/ThirdParty/OpenSource/cpu_features/src/impl_x86_linux_or_android.c
@@ -94,8 +92,15 @@ set(tf_src_graphics
 	${TF_COMMON}/Resources/ResourceLoader/ResourceLoader.cpp
 )
 
-add_library(TheForge STATIC ${tf_src_utilities} ${tf_src_os} ${tf_src_graphics})
+# Replaces The Forge's OS/<platform>/<platform>Log.c, so Forge log lines only reach
+# dhewm3's log through dhewm3's console instead of being printed twice
+set(tf_src_dhewm3
+	${CMAKE_SOURCE_DIR}/renderer/forge/ForgeOSLog.c
+)
+
+add_library(TheForge STATIC ${tf_src_utilities} ${tf_src_os} ${tf_src_graphics} ${tf_src_dhewm3})
 source_group(TREE ${TF_COMMON} PREFIX TheForge FILES ${tf_src_utilities} ${tf_src_os} ${tf_src_graphics})
+source_group(dhewm3 FILES ${tf_src_dhewm3})
 
 set_target_properties(TheForge PROPERTIES
 	CXX_STANDARD 17
