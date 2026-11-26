@@ -63,6 +63,10 @@ option(REPRODUCIBLE_BUILD "Replace __DATE__ and __TIME__ by hardcoded values for
 
 option(TRACY		"Build and integrate the Tracy profiler, requires HARDLINK_GAME" OFF)
 
+option(FORGE_RENDERER	"Render with The Forge (Vulkan) instead of OpenGL - work in progress, needs SDL2/SDL3" ON)
+option(FORGE_DEBUG		"Build The Forge in debug mode (enables Vulkan validation layers if installed)" OFF)
+set(THEFORGE_DIR "${CMAKE_SOURCE_DIR}/libs/TheForge" CACHE PATH "Path to The Forge source tree (git submodule by default)")
+
 option(HARDLINK_GAME "Compile gamecode into executable (no game DLLs)" OFF)
 
 if(NOT MSVC) # GCC/clang or compatible, hopefully
@@ -232,6 +236,19 @@ if(REPRODUCIBLE_BUILD)
 	add_definitions(-DID_REPRODUCIBLE_BUILD)
 endif()
 
+if(FORGE_RENDERER)
+	if(NOT SDL2 AND NOT SDL3)
+		message(FATAL_ERROR "FORGE_RENDERER needs SDL2 or SDL3")
+	endif()
+	if(IMGUI)
+		# the ImGui integration renders with OpenGL, there is no OpenGL context anymore
+		message(STATUS "Disabling IMGUI because FORGE_RENDERER is enabled (ImGui isn't ported to The Forge yet)")
+		set(IMGUI OFF)
+	endif()
+	message(STATUS "The Forge renderer enabled, using The Forge from ${THEFORGE_DIR}")
+	include(TheForge)
+endif()
+
 if(IMGUI)
 	if(SDL2 OR SDL3)
 		# we need C++11 for ImGui
@@ -250,7 +267,10 @@ else()
 	add_definitions(-DIMGUI_DISABLE)
 endif()
 
-if(NOT IMGUI)
+if(FORGE_RENDERER)
+	# The Forge glue code needs at least C++11 (The Forge itself is built as C++17)
+	set (CMAKE_CXX_STANDARD 11)
+elseif(NOT IMGUI)
 	# without ImGui C++98 should suffices, preserves compatibility
 	# with vintage system like PPC Macs
 	set (CMAKE_CXX_STANDARD 98)
@@ -1282,6 +1302,23 @@ else()
 	)
 endif()
 
+if(FORGE_RENDERER)
+	# only built into the main executable (not the dedicated server)
+	set(src_sys_core ${src_sys_core}
+		renderer/forge/ForgeBackend.h
+		renderer/forge/ForgeBackend.cpp
+		renderer/forge/ForgeConfig.h
+		renderer/forge/NullGL.h
+		renderer/forge/NullGL.cpp
+	)
+	# The Forge headers need C++17, the rest of dhewm3 doesn't
+	if(MSVC)
+		set_source_files_properties(renderer/forge/ForgeBackend.cpp PROPERTIES COMPILE_OPTIONS "/std:c++17")
+	else()
+		set_source_files_properties(renderer/forge/ForgeBackend.cpp PROPERTIES COMPILE_OPTIONS "-std=gnu++17")
+	endif()
+endif()
+
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${CMAKE_SOURCE_DIR})
 
@@ -1351,6 +1388,12 @@ endif()
 		${SDLx_LIBRARY}
 		${sys_libs}
 	)
+
+	if(FORGE_RENDERER)
+		# (after the set_target_properties(COMPILE_DEFINITIONS) above, which would overwrite this)
+		target_compile_definitions(${DHEWM3BINARY} PRIVATE D3_FORGE_RENDERER)
+		target_link_libraries(${DHEWM3BINARY} TheForge)
+	endif()
 
 	if(NOT APPLE AND NOT WIN32)
 		install(TARGETS ${DHEWM3BINARY}
