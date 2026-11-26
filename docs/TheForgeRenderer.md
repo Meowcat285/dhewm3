@@ -40,7 +40,8 @@ Then build as usual with CMake. Relevant options:
 No Vulkan SDK is needed to build or run: The Forge loads Vulkan at runtime (via volk) and
 ships its own Vulkan headers. Running needs a GPU driver with Vulkan support.
 
-* **Windows**: Visual Studio 2019 or 2022, x64 only.
+* **Windows**: Visual Studio 2019 or 2022, x64 only. The build copies `amd_ags_x64.dll`
+  (AMD's driver extension library, used by The Forge) next to `dhewm3.exe`; it must be shipped with it.
 * **Linux**: additionally needs the X11 and Wayland client development headers
   (`libx11-dev`, `libwayland-dev` on Debian/Ubuntu).
 

@@ -1393,6 +1393,12 @@ endif()
 		# (after the set_target_properties(COMPILE_DEFINITIONS) above, which would overwrite this)
 		target_compile_definitions(${DHEWM3BINARY} PRIVATE D3_FORGE_RENDERER)
 		target_link_libraries(${DHEWM3BINARY} TheForge)
+		# DLLs The Forge needs at runtime (Windows: amd_ags_x64.dll) go next to the executable
+		foreach(tf_runtime_file ${THEFORGE_RUNTIME_FILES})
+			add_custom_command(TARGET ${DHEWM3BINARY} POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different "${tf_runtime_file}" "$<TARGET_FILE_DIR:${DHEWM3BINARY}>"
+			)
+		endforeach()
 	endif()
 
 	if(NOT APPLE AND NOT WIN32)

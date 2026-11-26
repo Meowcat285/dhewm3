@@ -146,7 +146,15 @@ find_package(Threads REQUIRED)
 target_link_libraries(TheForge PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 if(WIN32)
 	# Vulkan itself is loaded at runtime through volk, so no vulkan-1.lib is needed.
-	target_link_libraries(TheForge PUBLIC ws2_32 shlwapi)
+	# The Vulkan backend uses AMD AGS and NVIDIA NVAPI on Windows (driver info, workarounds).
+	# nvapi64.lib is static, AGS needs amd_ags_x64.dll next to the executable (see THEFORGE_RUNTIME_FILES).
+	set(TF_AGS_DIR "${TF_COMMON}/Graphics/ThirdParty/OpenSource/ags/ags_lib/lib")
+	set(TF_NVAPI_DIR "${TF_COMMON}/Graphics/ThirdParty/OpenSource/nvapi/amd64")
+	target_link_libraries(TheForge PUBLIC ws2_32 shlwapi
+		"${TF_AGS_DIR}/amd_ags_x64.lib"
+		"${TF_NVAPI_DIR}/nvapi64.lib"
+	)
+	set(THEFORGE_RUNTIME_FILES "${TF_AGS_DIR}/amd_ags_x64.dll")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 	find_package(X11 REQUIRED)
 	target_include_directories(TheForge PUBLIC ${X11_INCLUDE_DIR})

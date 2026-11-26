@@ -225,6 +225,10 @@ COMPILE_ASSERT(sizeof(ssize_t) == sizeof(int64_t));
 
 #ifdef _WINDOWS
 // Restrict compilation to Windows 7 APIs
+// dhewm3: dhewm3 sets WINVER/_WIN32_WINNT to XP on the command line, The Forge needs Win7
+#undef NTDDI_VERSION
+#undef WINVER
+#undef _WIN32_WINNT
 #define NTDDI_VERSION NTDDI_WIN7
 #define WINVER        _WIN32_WINNT_WIN7
 #define _WIN32_WINNT  _WIN32_WINNT_WIN7
